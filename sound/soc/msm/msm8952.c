@@ -49,15 +49,9 @@
 
 #define DEFAULT_MCLK_RATE 9600000
 
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-int ext_pa_gpio = 0;
-int ext_pa_status = 0;
-#endif
-
 #define WCD_MBHC_DEF_RLOADS 5
 #define MAX_WSA_CODEC_NAME_LENGTH 80
 #define MSM_DT_MAX_PROP_SIZE 80
-
 #ifdef CONFIG_MACH_XIAOMI_MIDO
 #define EXT_PA_MODE  5
 #endif
@@ -101,28 +95,41 @@ static int msm8952_wsa_switch_event(struct snd_soc_dapm_widget *w,
 static struct wcd_mbhc_config mbhc_cfg = {
 	.read_fw_bin = false,
 	.calibration = NULL,
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-	.detect_extn_cable = false,
-#else
 	.detect_extn_cable = true,
-#endif
 	.mono_stero_detection = false,
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = false,
+#ifdef CONFIG_MACH_XIAOMI_MSM8953
+#ifdef CONFIG_MACH_XIAOMI_MIDO
 	.key_code[0] = KEY_MEDIA,
-#if (defined CONFIG_MACH_XIAOMI_MIDO) || (defined CONFIG_MACH_XIAOMI_TISSOT)
 	.key_code[1] = BTN_1,
 	.key_code[2] = BTN_2,
 	.key_code[3] = 0,
-#else
-	.key_code[1] = KEY_VOICECOMMAND,
-	.key_code[2] = KEY_VOLUMEUP,
-	.key_code[3] = KEY_VOLUMEDOWN,
-#endif
 	.key_code[4] = 0,
 	.key_code[5] = 0,
 	.key_code[6] = 0,
 	.key_code[7] = 0,
+#endif
+#ifdef CONFIG_MACH_XIAOMI_MARKW
+	.key_code[0] = KEY_MEDIA,
+	.key_code[1] = KEY_PREVIOUSSONG_NEW,
+	.key_code[2] = KEY_NEXTSONG_NEW,
+	.key_code[3] = KEY_VOICECOMMAND,
+	.key_code[4] = 0,
+	.key_code[5] = 0,
+	.key_code[6] = 0,
+	.key_code[7] = 0,
+#endif
+#else
+	.key_code[0] = KEY_MEDIA,
+	.key_code[1] = KEY_VOICECOMMAND,
+	.key_code[2] = KEY_VOLUMEUP,
+	.key_code[3] = KEY_VOLUMEDOWN,
+	.key_code[4] = 0,
+	.key_code[5] = 0,
+	.key_code[6] = 0,
+	.key_code[7] = 0,
+#endif
 	.linein_th = 5000,
 };
 
@@ -265,9 +272,6 @@ int is_ext_spk_gpio_support(struct platform_device *pdev,
 {
 	const char *spk_ext_pa = "qcom,msm-spk-ext-pa";
 
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-	int ret;
-#endif
 	pr_debug("%s:Enter\n", __func__);
 
 	pdata->spk_ext_pa_gpio = of_get_named_gpio(pdev->dev.of_node,
@@ -282,16 +286,6 @@ int is_ext_spk_gpio_support(struct platform_device *pdev,
 				__func__, pdata->spk_ext_pa_gpio);
 			return -EINVAL;
 		}
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-		ext_pa_gpio = pdata->spk_ext_pa_gpio;
-		ret = msm_get_gpioset_index(CLIENT_WCD_INT,
-						"ext_pa_gpio");
-		if (ret < 0) {
-			pr_err("%s: gpio set name does not exist: %s",
-						__func__, "ext_pa_gpio");
-			return ret;
-		}
-#endif
 	}
 #ifdef CONFIG_MACH_XIAOMI_MIDO
 	gpio_direction_output(pdata->spk_ext_pa_gpio, 0);
@@ -303,11 +297,10 @@ static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 {
 	struct snd_soc_card *card = codec->component.card;
 	struct msm8916_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-	int ret;
-#endif
 #ifdef CONFIG_MACH_XIAOMI_MIDO
 	int pa_mode = EXT_PA_MODE;
+#else
+	int ret;
 #endif
 
 	if (!gpio_is_valid(pdata->spk_ext_pa_gpio)) {
@@ -315,10 +308,6 @@ static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 			pdata->spk_ext_pa_gpio);
 		return false;
 	}
-
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-	ext_pa_status = enable;
-#endif
 
 	pr_debug("%s: %s external speaker PA\n", __func__,
 		enable ? "Enable" : "Disable");
@@ -332,34 +321,27 @@ static int enable_spk_ext_pa(struct snd_soc_codec *codec, int enable)
 			udelay(2);
 			pa_mode--;
 		}
-#else
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-		ret = msm_gpioset_activate(CLIENT_WCD_INT, "ext_pa_gpio");
-#else
-		ret = msm_gpioset_activate(CLIENT_WCD_INT, "ext_spk_gpio");
-#endif
-		if (ret) {
-			pr_err("%s: gpio set cannot be de-activated %s\n",
-					__func__, "ext_spk_gpio");
-			return ret;
-		}
-		gpio_set_value_cansleep(pdata->spk_ext_pa_gpio, enable);
-#endif
 	} else {
 		gpio_set_value_cansleep(pdata->spk_ext_pa_gpio, enable);
-#ifndef CONFIG_MACH_XIAOMI_MIDO
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-		ret = msm_gpioset_suspend(CLIENT_WCD_INT, "ext_pa_gpio");
+	}
 #else
-		ret = msm_gpioset_suspend(CLIENT_WCD_INT, "ext_spk_gpio");
-#endif
+		ret = msm_gpioset_activate(CLIENT_WCD_INT, "ext_spk_gpio");
 		if (ret) {
 			pr_err("%s: gpio set cannot be de-activated %s\n",
 					__func__, "ext_spk_gpio");
 			return ret;
 		}
-#endif
+		gpio_set_value_cansleep(pdata->spk_ext_pa_gpio, enable);
+	} else {
+		gpio_set_value_cansleep(pdata->spk_ext_pa_gpio, enable);
+		ret = msm_gpioset_suspend(CLIENT_WCD_INT, "ext_spk_gpio");
+		if (ret) {
+			pr_err("%s: gpio set cannot be de-activated %s\n",
+					__func__, "ext_spk_gpio");
+			return ret;
+		}
 	}
+#endif
 	return 0;
 }
 
@@ -1215,10 +1197,10 @@ static int msm8952_wsa_switch_event(struct snd_soc_dapm_widget *w,
 		}
 		if (atomic_dec_return(&supply->ref) == 0)
 			ret = regulator_disable(supply->supply);
-			if (ret)
-				dev_err(w->codec->component.card->dev,
-					"%s: Failed to disable wsa switch supply\n",
-					__func__);
+		if (ret)
+			dev_err(w->codec->component.card->dev,
+				"%s: Failed to disable wsa switch supply\n",
+				__func__);
 		break;
 	default:
 		break;
@@ -1672,7 +1654,7 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 		return NULL;
 
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(msm8952_wcd_cal)->X) = (Y))
-#if (defined CONFIG_MACH_XIAOMI_MIDO) || (defined CONFIG_MACH_XIAOMI_TISSOT)
+#ifdef CONFIG_MACH_XIAOMI_MIDO
 	S(v_hs_max, 1600);
 #else
 	S(v_hs_max, 1500);
@@ -1699,6 +1681,7 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 	 * 210-290 == Button 2
 	 * 360-680 == Button 3
 	 */
+#ifdef CONFIG_MACH_XIAOMI_MSM8953
 #ifdef CONFIG_MACH_XIAOMI_MIDO
 	btn_low[0] = 73;
 	btn_high[0] = 73;
@@ -1710,18 +1693,19 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 	btn_high[3] = 438;
 	btn_low[4] = 438;
 	btn_high[4] = 438;
-#else
-#ifdef CONFIG_MACH_XIAOMI_TISSOT
-	btn_low[0] = 91;
-	btn_high[0] = 91;
-	btn_low[1] = 259;
-	btn_high[1] = 259;
-	btn_low[2] = 488;
-	btn_high[2] = 488;
-	btn_low[3] = 488;
-	btn_high[3] = 488;
-	btn_low[4] = 488;
-	btn_high[4] = 488;
+#endif
+#ifdef CONFIG_MACH_XIAOMI_MARKW
+	btn_low[0] = 25;
+	btn_high[0] = 75;
+	btn_low[1] = 200;
+	btn_high[1] = 225;
+	btn_low[2] = 325;
+	btn_high[2] = 450;
+	btn_low[3] = 500;
+	btn_high[3] = 510;
+	btn_low[4] = 530;
+	btn_high[4] = 540;
+#endif
 #else
 	btn_low[0] = 75;
 	btn_high[0] = 75;
@@ -1734,7 +1718,7 @@ static void *def_msm8952_wcd_mbhc_cal(void)
 	btn_low[4] = 500;
 	btn_high[4] = 500;
 #endif
-#endif
+
 	return msm8952_wcd_cal;
 }
 
@@ -2518,41 +2502,7 @@ static struct snd_soc_dai_link msm8952_dai[] = {
 		.ignore_suspend = 1,
 		.ignore_pmdown_time = 1,
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA29,
-        },
-#ifdef CONFIG_SND_SOC_MAX98927
-        {/* hw:x,41 */
-		.name = "Quinary MI2S TX_Hostless",
-		.stream_name = "Quinary MI2S_TX Hostless Capture",
-		.cpu_dai_name = "QUIN_MI2S_TX_HOSTLESS",
-		.platform_name = "msm-pcm-hostless",
-		.dynamic = 1,
-		.dpcm_capture = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
-			SND_SOC_DPCM_TRIGGER_POST},
-		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
-		.ignore_suspend = 1,
-		.ignore_pmdown_time = 1,
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
 	},
-	{ /* hw:x,42 */
-		.name = "Quinary MI2S_RX Hostless",
-		.stream_name = "Quinary MI2S_RX Hostless",
-		.cpu_dai_name = "QUIN_MI2S_RX_HOSTLESS",
-		.platform_name	= "msm-pcm-hostless",
-		.dynamic = 1,
-		.dpcm_playback = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
-			SND_SOC_DPCM_TRIGGER_POST},
-		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
-		.ignore_suspend = 1,
-		 /* this dailink has playback support */
-		.ignore_pmdown_time = 1,
-		/* This dainlink has MI2S support */
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
-	},
-#endif
 	/* Backend I2S DAI Links */
 	{
 		.name = LPASS_BE_PRI_MI2S_RX,
@@ -2806,13 +2756,8 @@ static struct snd_soc_dai_link msm8952_dai[] = {
 		.stream_name = "Quinary MI2S Capture",
 		.cpu_dai_name = "msm-dai-q6-mi2s.5",
 		.platform_name = "msm-pcm-routing",
-#ifdef CONFIG_SND_SOC_MAX98927
-		.codec_dai_name = "max98927-aif1",
-		.codec_name = "max98927",
-#else
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-#endif
 		.no_pcm = 1,
 		.dpcm_capture = 1,
 		.be_id = MSM_BACKEND_DAI_QUINARY_MI2S_TX,
@@ -2845,13 +2790,8 @@ static struct snd_soc_dai_link msm8952_quin_dai_link[] = {
 		.stream_name = "Quinary MI2S Playback",
 		.cpu_dai_name = "msm-dai-q6-mi2s.5",
 		.platform_name = "msm-pcm-routing",
-#ifdef CONFIG_SND_SOC_MAX98927
-		.codec_dai_name = "max98927-aif1",
-		.codec_name = "max98927",
-#else
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-#endif
 		.no_pcm = 1,
 		.dpcm_playback = 1,
 		.be_id = MSM_BACKEND_DAI_QUINARY_MI2S_RX,
@@ -3507,6 +3447,9 @@ err:
 		}
 	}
 err1:
+#ifdef CONFIG_MACH_XIAOMI_MARKW
+	snd_soc_card_set_drvdata(card, NULL);
+#endif
 	devm_kfree(&pdev->dev, pdata);
 	return ret;
 }
